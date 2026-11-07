@@ -2,6 +2,6 @@
 .swiftpm/
 *.xcodeproj
 *.xcworkspace
+xcuserdata/
 DerivedData/
-Package.resolved
 .DS_Store

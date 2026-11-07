@@ -5,7 +5,10 @@ let package = Package(
     name: "SwiftPETSCII",
     platforms: [
         .iOS(.v17),
-        .macOS(.v14)
+        .macOS(.v14),
+        .tvOS(.v17),
+        .watchOS(.v10),
+        .visionOS(.v1),
     ],
     products: [
         .library(
@@ -14,14 +17,10 @@ let package = Package(
         ),
     ],
     targets: [
-        .target(
-            name: "SwiftPETSCII",
-            path: "Sources/SwiftPETSCII"
-        ),
+        .target(name: "SwiftPETSCII"),
         .testTarget(
             name: "SwiftPETSCIITests",
-            dependencies: ["SwiftPETSCII"],
-            path: "Tests/SwiftPETSCIITests"
+            dependencies: ["SwiftPETSCII"]
         ),
     ],
     swiftLanguageModes: [.v6]
