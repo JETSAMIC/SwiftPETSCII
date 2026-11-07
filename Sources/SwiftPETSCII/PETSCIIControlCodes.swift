@@ -1,53 +1,67 @@
 import Foundation
 
-/// Catalog of PETSCII control bytes and their interpreted meaning. This is
-/// the parser-side dispatch table: given a single non-printable byte, what
-/// state change should the renderer apply?
+/// The C64 PETSCII control codes that affect screen output.
 ///
-/// Sources:
-///   - C64 Programmer's Reference Guide, Appendix F (PETSCII tables)
-///   - C64 User's Guide, Appendix E (control codes)
-///   - https://style64.org/petscii/
-///   - https://www.commodore.ca/manuals/c64_users_guide/c64-users_guide-04-appendix_e.pdf
+/// These are the codes the C64 KERNAL screen editor acts on when a byte is
+/// printed with `CHROUT`. Codes defined only on other Commodore machines
+/// (for example the C128's underline `0x02`, bell `0x07`, tab `0x09`,
+/// line feed `0x0A` and escape `0x1B`) are not C64 screen controls and
+/// ``decode(_:)`` returns `nil` for them. See `Reference/PETSCII.md` for the
+/// full table and the machine differences.
+///
+/// Sources: C64 Programmer's Reference Guide, Appendix C/E; C64 User's
+/// Guide, Appendix E; the KERNAL screen editor (`$E716`).
 public enum PETSCIIControlCode: Sendable, Equatable {
-    /// Set the current text color (one of the 16 C64 palette indices).
+    /// Set the current text color. Codes `0x05`, `0x1C`, `0x1E`, `0x1F`,
+    /// `0x81`, `0x90`, `0x95`…`0x9C`, `0x9E`, `0x9F`.
     case setColor(C64Color)
-    /// Switch character set to set 1 (uppercase / graphics) — code 0x8E.
+    /// Switch the whole screen to the uppercase/graphics set — `0x8E`.
     case switchToUppercaseGraphics
-    /// Switch character set to set 2 (uppercase / lowercase) — code 0x0E.
+    /// Switch the whole screen to the lowercase/uppercase set — `0x0E`.
     case switchToUppercaseLowercase
-    /// Reverse-video on (subsequent characters render fg/bg swapped) — 0x12.
+    /// Disable the SHIFT+Commodore charset toggle on the keyboard — `0x08`.
+    /// Has no visible effect on output; `0x0E`/`0x8E` still switch.
+    case lockCharset
+    /// Re-enable the SHIFT+Commodore charset toggle — `0x09`.
+    case unlockCharset
+    /// Reverse video on — `0x12`.
     case reverseOn
-    /// Reverse-video off — 0x92.
+    /// Reverse video off — `0x92`.
     case reverseOff
-    /// Cursor to (0,0). No clear. Code 0x13.
+    /// Cursor to the top-left corner without clearing — `0x13`.
     case home
-    /// Clear screen and home cursor. Code 0x93. Also our animation frame
-    /// boundary marker.
+    /// Clear the screen and home the cursor — `0x93`. SwiftPETSCII also
+    /// treats this as an animation frame boundary.
     case clearScreen
-    /// Cursor moves.
+    /// Cursor up — `0x91`.
     case cursorUp
+    /// Cursor down — `0x11`. Scrolls the screen on the bottom row.
     case cursorDown
+    /// Cursor left — `0x9D`.
     case cursorLeft
+    /// Cursor right — `0x1D`.
     case cursorRight
-    /// Insert a blank cell at the cursor (shifts the rest of the line right)
-    /// — code 0x94.
+    /// Insert a blank at the cursor, shifting the rest of the line right — `0x94`.
     case insert
-    /// Delete cell at cursor (shifts the rest of the line left) — code 0x14.
+    /// Delete the character left of the cursor, shifting the rest of the
+    /// line left (backspace) — `0x14`.
     case delete
-    /// Carriage return / newline. 0x0D advances to start of next row.
+    /// Carriage return — `0x0D`. Moves to the start of the next line and
+    /// also turns reverse video and quote mode off.
     case newline
-    /// Line feed (0x0A) — on the C64 this is identical to `newline`.
+    /// Shifted carriage return — `0x8D`. Same screen effect as ``newline``.
+    case shiftedReturn
+    /// Line feed — `0x0A`. Not a C64 screen control: the C64 ignores it
+    /// (it is a line feed on the C128). Kept for API compatibility;
+    /// ``decode(_:)`` returns it for `0x0A` and the parser treats it as a
+    /// no-op.
     case lineFeed
 
-    /// Decode a single PETSCII byte into a control action, or `nil` if the
-    /// byte represents printable content rather than a control code.
+    /// Decodes a single PETSCII byte into a control action.
     ///
-    /// Printable ranges are 0x20..0x7F and 0xA0..0xFF — those bytes return
-    /// `nil` here and should be written to the current cursor cell by the
-    /// parser. Bytes outside those ranges and not in this table fall
-    /// through to `nil` as well — the parser surfaces those via
-    /// `PETSCIIError.unsupportedControlCode` if strict mode is requested.
+    /// - Parameter byte: A PETSCII byte.
+    /// - Returns: The control action, or `nil` if the byte is printable
+    ///   (`0x20…0x7F`, `0xA0…0xFF`) or has no C64 screen meaning.
     public static func decode(_ byte: UInt8) -> PETSCIIControlCode? {
         switch byte {
         // --- colors ---
@@ -71,6 +85,8 @@ public enum PETSCIIControlCode: Sendable, Equatable {
         // --- charset ---
         case 0x0E: return .switchToUppercaseLowercase
         case 0x8E: return .switchToUppercaseGraphics
+        case 0x08: return .lockCharset
+        case 0x09: return .unlockCharset
 
         // --- reverse-video ---
         case 0x12: return .reverseOn
@@ -92,6 +108,7 @@ public enum PETSCIIControlCode: Sendable, Equatable {
 
         // --- line termination ---
         case 0x0D: return .newline
+        case 0x8D: return .shiftedReturn
         case 0x0A: return .lineFeed
 
         default:
@@ -99,9 +116,41 @@ public enum PETSCIIControlCode: Sendable, Equatable {
         }
     }
 
-    /// Is this byte known to be a printable PETSCII codepoint (it occupies
-    /// a screen cell rather than mutating parser state)?
+    /// The PETSCII byte that encodes this control action.
+    public var byte: UInt8 {
+        switch self {
+        case .setColor(let color): return Self.colorCodes[Int(color.rawValue)]
+        case .switchToUppercaseGraphics: return 0x8E
+        case .switchToUppercaseLowercase: return 0x0E
+        case .lockCharset: return 0x08
+        case .unlockCharset: return 0x09
+        case .reverseOn: return 0x12
+        case .reverseOff: return 0x92
+        case .home: return 0x13
+        case .clearScreen: return 0x93
+        case .cursorUp: return 0x91
+        case .cursorDown: return 0x11
+        case .cursorLeft: return 0x9D
+        case .cursorRight: return 0x1D
+        case .insert: return 0x94
+        case .delete: return 0x14
+        case .newline: return 0x0D
+        case .shiftedReturn: return 0x8D
+        case .lineFeed: return 0x0A
+        }
+    }
+
+    /// PETSCII color code per hardware color index.
+    private static let colorCodes: [UInt8] = [
+        0x90, 0x05, 0x1C, 0x9F, 0x9C, 0x1E, 0x1F, 0x9E,
+        0x81, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B,
+    ]
+
+    /// Returns `true` if the byte is a printable PETSCII code — one that
+    /// occupies a screen cell (`0x20…0x7F` or `0xA0…0xFF`).
+    ///
+    /// - Parameter byte: A PETSCII byte.
     public static func isPrintable(_ byte: UInt8) -> Bool {
-        return (byte >= 0x20 && byte <= 0x7F) || (byte >= 0xA0 && byte <= 0xFF)
+        (byte >= 0x20 && byte <= 0x7F) || byte >= 0xA0
     }
 }

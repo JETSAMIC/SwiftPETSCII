@@ -92,10 +92,22 @@ final class ControlCodeParseTests: XCTestCase {
 
     // MARK: - unknown bytes decode to nil
 
+    func testCharsetLockBytes() {
+        XCTAssertEqual(PETSCIIControlCode.decode(0x08), .lockCharset)
+        XCTAssertEqual(PETSCIIControlCode.decode(0x09), .unlockCharset)
+    }
+
+    /// Bytes in the control range with no C64 screen meaning decode to nil.
+    ///
+    /// Changed during the production audit: 0x08 and 0x09 were listed here,
+    /// but they are the C64's "lock/unlock SHIFT+C= charset toggle" codes
+    /// (C64 Programmer's Reference Guide, Appendix C) and now decode to
+    /// `.lockCharset` / `.unlockCharset`. The C128-only codes (0x02, 0x07,
+    /// 0x0B, 0x0C, 0x0F, 0x18, 0x1B) remain unknown on the C64.
     func testUnknownControlBytesDecodeToNil() {
-        // Some bytes in the control range that aren't defined PETSCII control codes.
-        for b: UInt8 in [0x00, 0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x08,
-                          0x09, 0x0B, 0x0C, 0x0F, 0x10, 0x15, 0x16, 0x17,
+        // Some bytes in the control range that aren't defined C64 control codes.
+        for b: UInt8 in [0x00, 0x01, 0x02, 0x03, 0x04, 0x06, 0x07,
+                          0x0B, 0x0C, 0x0F, 0x10, 0x15, 0x16, 0x17,
                           0x18, 0x19, 0x1A, 0x1B] {
             XCTAssertNil(PETSCIIControlCode.decode(b), String(format: "0x%02X should decode to nil", b))
         }

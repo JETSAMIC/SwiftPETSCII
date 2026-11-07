@@ -1,15 +1,17 @@
 import Foundation
 
-/// The C64 supports two distinct 256-glyph character sets, switched at
-/// runtime by the user (SHIFT+C= on real hardware) or programmatically by
-/// PETSCII control codes 0x0E (lowercase / set 2) and 0x8E (uppercase /
-/// graphics / set 1). Each glyph is 8x8 pixels (8 bytes, one byte per row,
-/// MSB = leftmost pixel).
-public enum PETSCIICharset: UInt8, Sendable, CaseIterable {
-    /// Set 1: uppercase letters + graphics characters. Default at boot.
+/// The C64's two 256-glyph character sets.
+///
+/// The VIC-II displays the *whole screen* in one set at a time; the set is
+/// switched by PETSCII `0x0E` (to ``uppercaseLowercase``) and `0x8E` (to
+/// ``uppercaseGraphics``), or by SHIFT+Commodore on the keyboard. Each
+/// glyph is 8×8 pixels (8 bytes, one per row, MSB = leftmost pixel). Glyphs
+/// `0x80…0xFF` of each set are the reverse-video forms of `0x00…0x7F`.
+public enum PETSCIICharset: UInt8, Sendable, CaseIterable, Codable {
+    /// Set 1, "unshifted": uppercase letters and graphics. Default at boot.
     case uppercaseGraphics = 0
-    /// Set 2: uppercase + lowercase letters (graphics chars replaced by
-    /// lowercase letters in the 0x01..0x1A range).
+    /// Set 2, "shifted": lowercase letters at screen codes `0x01…0x1A`,
+    /// uppercase letters at `0x41…0x5A` (where set 1 has graphics).
     case uppercaseLowercase = 1
 
     /// Bytes per glyph in the character ROM.
