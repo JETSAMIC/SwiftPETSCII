@@ -95,6 +95,8 @@ final class RobustnessTests: XCTestCase {
         XCTAssertNotNil(doc.frames.first?.cgImage(palette: .pepto))
         let text = PETSCIIToUnicode.string(from: doc.frames[0].screen)
         XCTAssertTrue(text.hasPrefix("HI"))
+        let bytes = try PETSCIIToUnicode.petsciiBytes(for: "Hello!", charset: .uppercaseLowercase)
+        XCTAssertEqual(bytes, [0xC8, 0x45, 0x4C, 0x4C, 0x4F, 0x21])
     }
 }
 
