@@ -1,24 +1,24 @@
 import Foundation
 
-/// Embedded C64 character ROM (chargen).
+/// Embedded C64 character generator ROM (chargen, part 901225-01).
 ///
-/// Source: VICE emulator's `chargen-901225-01.bin`, the canonical
-/// public-domain dump of Commodore's character generator ROM.
-/// Upstream: https://github.com/VICE-Team/svn-mirror/blob/main/vice/data/C64/chargen-901225-01.bin
+/// Source: VICE emulator's `chargen-901225-01.bin`
+/// (https://github.com/VICE-Team/svn-mirror/blob/main/vice/data/C64/chargen-901225-01.bin).
+/// The embedded bytes match the well-known dump: MD5
+/// `12a4202f5331d45af846af6c58fba946`, SHA-1
+/// `adc7c31e18c7c7413d54802ef2f4193da14711aa`, SHA-256
+/// `fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420`.
 ///
-/// Commodore released its intellectual property into the public domain in
-/// 2025; only Cloanto's Amiga ROMs (Kickstart / Workbench) remain
-/// proprietary. The C64 character ROM is freely redistributable.
+/// The ROM contents are Commodore's work. Its redistribution status is not
+/// established by this package; see the README's "Character ROM" section.
 ///
 /// Layout (4096 bytes total):
-///   - bytes      0..2047 : charset 1 (uppercase / graphics), 256 glyphs * 8 bytes
-///   - bytes   2048..4095 : charset 2 (uppercase / lowercase), 256 glyphs * 8 bytes
+///   - bytes      0..2047 : set 1 (uppercase / graphics), 256 glyphs × 8 bytes
+///   - bytes   2048..4095 : set 2 (lowercase / uppercase), 256 glyphs × 8 bytes
 ///
-/// Each glyph is 8 rows of 8 pixels. One byte per row, MSB = leftmost
-/// pixel. Bit set = foreground, bit clear = background.
-///
-/// SHA-256 of the embedded array:
-/// fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420
+/// Within each set, glyphs `0x80…0xFF` are the reverse-video forms of
+/// `0x00…0x7F`. Each glyph is 8 rows of 8 pixels, one byte per row,
+/// MSB = leftmost pixel; a set bit is foreground.
 public enum C64CharROM {
 
     /// Bytes per glyph (one byte per row, 8 rows = 8 pixels tall).
@@ -28,8 +28,12 @@ public enum C64CharROM {
     /// Bytes per character set (256 * 8 = 2048).
     public static let bytesPerCharset: Int = 2048
 
-    /// Look up an 8-byte glyph for a given charset + codepoint.
-    /// Returns a slice into `chargen`; never allocates.
+    /// Looks up the 8-byte glyph for a screen code.
+    ///
+    /// - Parameters:
+    ///   - charset: The character set.
+    ///   - codepoint: Screen code `0x00…0xFF` (`0x80…0xFF` are reverse glyphs).
+    /// - Returns: A slice of ``chargen``; never allocates.
     @inlinable
     public static func glyph(charset: PETSCIICharset, codepoint: UInt8) -> ArraySlice<UInt8> {
         let base = Int(charset.rawValue) * bytesPerCharset + Int(codepoint) * bytesPerGlyph

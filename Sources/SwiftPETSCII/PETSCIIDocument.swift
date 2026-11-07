@@ -1,34 +1,36 @@
 import Foundation
 import CoreGraphics
 
-/// Top-level public entry point. Load a PETSCII file (`.c`, `.pet`, `.seq`,
-/// or any raw PETSCII byte stream) and read out its decoded frames.
+/// Top-level entry point: decodes a raw PETSCII byte stream — typically a
+/// C64 `SEQ` file or a BBS capture — into frames.
 ///
-/// Static files contain a single frame; animated files (the parser detects
-/// these by the presence of one or more `CHR$(147)` clear-screen control
-/// codes) contain multiple.
+/// Static streams yield a single frame; streams that clear the screen
+/// (`CLR`, `0x93`) between screens yield one frame per screen. Container
+/// formats that are *not* raw PETSCII streams (PRG screen dumps, Marq's
+/// PETSCII Editor `.c`/`.pet` exports, Petmate `.petmate`, `.d64` disk
+/// images) are not decoded.
 public struct PETSCIIDocument: Sendable {
 
     /// Every decoded frame, in source order.
     public let frames: [PETSCIIFrame]
 
-    /// `true` when this document has more than one frame — i.e. there was
-    /// at least one frame-boundary clear-screen in the source.
+    /// `true` when this document has more than one frame.
     public var isAnimated: Bool { frames.count > 1 }
 
-    /// Sum of `.duration` across every frame. Useful for driving a UI
-    /// timer that loops the whole animation.
+    /// Sum of every frame's ``PETSCIIFrame/duration``, in seconds.
     public var totalDuration: TimeInterval {
         frames.reduce(0) { $0 + $1.duration }
     }
 
     // MARK: - Init
 
-    /// Decode from raw PETSCII bytes.
+    /// Decodes raw PETSCII bytes.
+    ///
     /// - Parameters:
-    ///   - data: a buffer of PETSCII bytes.
-    ///   - options: parser configuration (initial fg/bg, default frame duration).
-    /// - Throws: `PETSCIIError` if the input cannot be parsed.
+    ///   - data: The PETSCII stream.
+    ///   - options: Parser configuration.
+    /// - Throws: ``PETSCIIError/invalidData`` for empty input, or any error
+    ///   from ``PETSCIIParser/parse(_:)``.
     public init(
         data: Data,
         options: PETSCIIParser.Options = PETSCIIParser.Options()
@@ -39,7 +41,13 @@ public struct PETSCIIDocument: Sendable {
         self.frames = try parser.parse(bytes)
     }
 
-    /// Convenience: load from a file URL.
+    /// Loads and decodes a file.
+    ///
+    /// - Parameters:
+    ///   - url: File URL of a raw PETSCII stream (e.g. a `SEQ` file).
+    ///   - options: Parser configuration.
+    /// - Throws: Any error from `Data(contentsOf:)`, ``PETSCIIError/invalidData``
+    ///   for an empty file, or any error from ``PETSCIIParser/parse(_:)``.
     public init(
         url: URL,
         options: PETSCIIParser.Options = PETSCIIParser.Options()
@@ -48,7 +56,13 @@ public struct PETSCIIDocument: Sendable {
         try self.init(data: data, options: options)
     }
 
-    /// Convenience for callers that already have a `[UInt8]`.
+    /// Decodes raw PETSCII bytes.
+    ///
+    /// - Parameters:
+    ///   - bytes: The PETSCII stream.
+    ///   - options: Parser configuration.
+    /// - Throws: ``PETSCIIError/invalidData`` for empty input, or any error
+    ///   from ``PETSCIIParser/parse(_:)``.
     public init(
         bytes: [UInt8],
         options: PETSCIIParser.Options = PETSCIIParser.Options()
