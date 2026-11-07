@@ -1,84 +1,100 @@
 import Foundation
 import CoreGraphics
 
-/// Pure-CoreGraphics renderer: takes a `PETSCIIScreen` and rasterizes it
-/// to a 320x200 RGBA8 `CGImage` using the embedded C64 character ROM
-/// and the Pepto palette.
+/// Rasterizes a ``PETSCIIScreen`` to a 320×200 RGBA8 `CGImage` using the
+/// embedded C64 character ROM.
 ///
-/// One cell = 8x8 source pixels. No scaling is applied — callers can scale
-/// up with `CGContext.draw(_:in:)` and `.interpolationQuality = .none` for
-/// crisp nearest-neighbor zoom.
+/// One cell is 8×8 pixels and no scaling is applied; scale up with
+/// `interpolationQuality = .none` for crisp nearest-neighbour zoom. The
+/// border is not drawn.
+///
+/// Reverse video is rendered the way the VIC-II does it: by drawing the
+/// ROM's reverse glyph (screen code with bit 7 set) in the normal
+/// foreground/background colors. This matters for the few glyphs whose ROM
+/// reverse form is not an exact inversion (notably reverse `@`).
 public enum PETSCIIRenderer {
 
-    /// Native render dimensions: 40 cols * 8 px = 320, 25 rows * 8 px = 200.
+    /// How the character set of each cell is chosen.
+    public enum CharsetMode: Sendable, Equatable {
+        /// Every cell uses ``PETSCIIScreen/charset`` — what a C64 displays.
+        case screen
+        /// Every cell uses its own ``PETSCIICell/charset`` (the set active
+        /// when it was written). Not achievable on real hardware, but useful
+        /// for editors that mix sets.
+        case perCell
+    }
+
+    /// Image width in pixels: 40 columns × 8 = 320.
     public static let pixelWidth: Int  = PETSCIIScreen.columns * C64CharROM.bytesPerGlyph
+    /// Image height in pixels: 25 rows × 8 = 200.
     public static let pixelHeight: Int = PETSCIIScreen.rows    * C64CharROM.bytesPerGlyph
 
-    /// Render the given screen to a 320x200 sRGB `CGImage`.
-    public static func render(_ screen: PETSCIIScreen) -> CGImage? {
-        let width  = pixelWidth
-        let height = pixelHeight
+    /// Renders a screen to RGBA8 pixels.
+    ///
+    /// - Parameters:
+    ///   - screen: The screen to render.
+    ///   - palette: RGB palette for the 16 colors.
+    ///   - charsetMode: How each cell's character set is chosen.
+    /// - Returns: `320 × 200 × 4` bytes, row-major, RGBA with alpha 255.
+    public static func pixels(
+        _ screen: PETSCIIScreen,
+        palette: C64Palette = .c64Wiki,
+        charsetMode: CharsetMode = .screen
+    ) -> [UInt8] {
         let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
+        let bytesPerRow = pixelWidth * bytesPerPixel
+        var pixels = [UInt8](repeating: 0, count: pixelWidth * pixelHeight * bytesPerPixel)
 
-        // RGBA8 buffer, premultiplied-last alpha. Initialize to the border
-        // / background color so even a "blank" frame has the right tint.
-        var pixels = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
-
-        // Render cell-by-cell.
         for row in 0 ..< PETSCIIScreen.rows {
             for col in 0 ..< PETSCIIScreen.columns {
                 let cell = screen[column: col, row: row]
-                let glyph = C64CharROM.glyph(charset: cell.charset, codepoint: cell.codepoint)
-
-                let (fgR, fgG, fgB) = cell.reverse
-                    ? cell.background.rgb
-                    : cell.foreground.rgb
-                let (bgR, bgG, bgB) = cell.reverse
-                    ? cell.foreground.rgb
-                    : cell.background.rgb
-
-                // 8 rows of 8 pixels per glyph.
-                let cellPixelX = col * 8
-                let cellPixelY = row * 8
+                let charset = charsetMode == .screen ? screen.charset : cell.charset
+                let glyph = C64CharROM.glyph(charset: charset, codepoint: cell.screenRAMValue)
+                let fg = palette.rgb(cell.foreground)
+                let bg = palette.rgb(cell.background)
 
                 for gy in 0 ..< 8 {
                     let rowByte = glyph[glyph.startIndex + gy]
-                    let pixelY = cellPixelY + gy
-                    let rowBase = pixelY * bytesPerRow + cellPixelX * bytesPerPixel
-
+                    let rowBase = (row * 8 + gy) * bytesPerRow + col * 8 * bytesPerPixel
                     for gx in 0 ..< 8 {
-                        let bit = (rowByte >> (7 - gx)) & 0x01
+                        let on = (rowByte >> (7 - gx)) & 0x01 == 1
+                        let color = on ? fg : bg
                         let idx = rowBase + gx * bytesPerPixel
-                        if bit == 1 {
-                            pixels[idx + 0] = fgR
-                            pixels[idx + 1] = fgG
-                            pixels[idx + 2] = fgB
-                            pixels[idx + 3] = 255
-                        } else {
-                            pixels[idx + 0] = bgR
-                            pixels[idx + 1] = bgG
-                            pixels[idx + 2] = bgB
-                            pixels[idx + 3] = 255
-                        }
+                        pixels[idx + 0] = color.r
+                        pixels[idx + 1] = color.g
+                        pixels[idx + 2] = color.b
+                        pixels[idx + 3] = 255
                     }
                 }
             }
         }
+        return pixels
+    }
 
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else {
+    /// Renders a screen to a 320×200 `CGImage` in the device RGB color space.
+    ///
+    /// - Parameters:
+    ///   - screen: The screen to render.
+    ///   - palette: RGB palette for the 16 colors.
+    ///   - charsetMode: How each cell's character set is chosen.
+    /// - Returns: The image, or `nil` if CoreGraphics cannot create it.
+    public static func render(
+        _ screen: PETSCIIScreen,
+        palette: C64Palette = .c64Wiki,
+        charsetMode: CharsetMode = .screen
+    ) -> CGImage? {
+        let data = pixels(screen, palette: palette, charsetMode: charsetMode)
+        guard let provider = CGDataProvider(data: Data(data) as CFData) else {
             return nil
         }
         return CGImage(
-            width: width,
-            height: height,
+            width: pixelWidth,
+            height: pixelHeight,
             bitsPerComponent: 8,
             bitsPerPixel: 32,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo,
+            bytesPerRow: pixelWidth * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
             provider: provider,
             decode: nil,
             shouldInterpolate: false,
