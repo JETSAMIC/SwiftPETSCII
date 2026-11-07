@@ -68,7 +68,7 @@ public enum C64Color: UInt8, Sendable, CaseIterable, Codable {
 /// - ``pepto``: Philip "Pepto" Timmermann's measured PAL palette (2001),
 ///   VICE's `pepto-pal`, which is closer to a real PAL C64.
 public struct C64Palette: Sendable, Hashable {
-    /// The 16 entries, indexed by ``C64Color/rawValue``, as `0xRRGGBB`.
+    /// The 16 entries, indexed by hardware color index (`C64Color.rawValue`), as `0xRRGGBB`.
     public let colors: [UInt32]
 
     /// Creates a palette from 16 `0xRRGGBB` values.
