@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RETURN turns reverse video off; LF is ignored as on the C64; DEL deletes
   the character left of the cursor.
 - Output past the bottom row scrolls instead of overwriting the last row.
+- Quote and insert mode follow the KERNAL's test order: INST is executed
+  (not echoed) in insert mode, and pending inserts cancel quote mode.
+- DEL at the start of a line blanks the last cell of the previous line.
+- Strict mode rejects the C128 line feed (`0x0A`).
 - Reverse video uses the ROM's reverse glyphs.
 - The palette is correctly documented as the C64-Wiki palette (it was
   described as Pepto's).

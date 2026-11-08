@@ -44,7 +44,8 @@ public enum PETSCIIControlCode: Sendable, Equatable {
     /// Insert a blank at the cursor, shifting the rest of the line right — `0x94`.
     case insert
     /// Delete the character left of the cursor, shifting the rest of the
-    /// line left (backspace) — `0x14`.
+    /// line left (backspace) — `0x14`. At the start of a line it blanks the
+    /// last cell of the previous line.
     case delete
     /// Carriage return — `0x0D`. Moves to the start of the next line and
     /// also turns reverse video and quote mode off.
@@ -54,7 +55,7 @@ public enum PETSCIIControlCode: Sendable, Equatable {
     /// Line feed — `0x0A`. Not a C64 screen control: the C64 ignores it
     /// (it is a line feed on the C128). Kept for API compatibility;
     /// ``decode(_:)`` returns it for `0x0A` and the parser treats it as a
-    /// no-op.
+    /// no-op (or, in strict mode, as an unsupported control code).
     case lineFeed
 
     /// Decodes a single PETSCII byte into a control action.

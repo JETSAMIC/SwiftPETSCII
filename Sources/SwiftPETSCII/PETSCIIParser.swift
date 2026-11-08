@@ -18,8 +18,12 @@ import Foundation
 ///   C64 scrolls immediately).
 /// - Quote mode and insert mode: after an odd number of `"` characters, or
 ///   while inserted blanks remain, control codes are *displayed* as
-///   reverse-video glyphs instead of executed — exactly as on a C64.
-///   Disable with ``Options/emulateQuoteMode``.
+///   reverse-video glyphs instead of executed — exactly as on a C64: DEL
+///   still deletes in quote mode, INST still inserts in insert mode, and
+///   insert mode cancels quote mode. Disable with
+///   ``Options/emulateQuoteMode``.
+/// - `DEL` at the start of a line backs onto the last column of the
+///   previous line and blanks it.
 /// - The character set is a property of the whole screen
 ///   (``PETSCIIScreen/charset``); each cell additionally records the set
 ///   active when it was written.
@@ -45,8 +49,8 @@ public struct PETSCIIParser: Sendable {
         /// `true`). When `false`, control codes are always executed.
         public var emulateQuoteMode: Bool
         /// Throw ``PETSCIIError/unsupportedControlCode(_:offset:)`` for
-        /// control bytes with no C64 meaning instead of ignoring them
-        /// (default `false`).
+        /// control bytes with no C64 screen meaning (including the C128 line
+        /// feed `0x0A`) instead of ignoring them (default `false`).
         public var strict: Bool
         /// Maximum number of frames to decode before throwing
         /// ``PETSCIIError/frameLimitExceeded(limit:)``. Each frame holds 1000
@@ -213,31 +217,48 @@ private struct ScreenEditor {
             return
         }
 
+        // KERNAL $E6AA: every CHROUT exits with quote mode cleared while
+        // inserted blanks remain, so `"` cannot start quote mode in insert
+        // mode (unless it consumes the last inserted blank).
+        defer { if insertCount > 0 { quoteMode = false } }
+
         let printable = PETSCIIControlCode.isPrintable(byte)
 
-        if !printable, options.emulateQuoteMode, quoteMode || insertCount > 0 {
-            // DEL still deletes in quote mode, but is echoed in insert mode.
-            if !(byte == 0x14 && insertCount == 0) {
-                put(PETSCIIParser.screenCode(forPETSCII: byte), reverse: false)
-                return
-            }
-        }
-
-        if printable {
-            put(PETSCIIParser.screenCode(forPETSCII: byte), reverse: reverse)
-            if byte == 0x22, options.emulateQuoteMode {
-                quoteMode.toggle()
-            }
+        if !printable, options.emulateQuoteMode, echoes(byte) {
+            put(PETSCIIParser.screenCode(forPETSCII: byte), reverse: false)
             return
         }
 
-        guard let code = PETSCIIControlCode.decode(byte) else {
+        if printable {
+            if byte == 0x22, options.emulateQuoteMode {
+                quoteMode.toggle()
+            }
+            put(PETSCIIParser.screenCode(forPETSCII: byte), reverse: reverse)
+            return
+        }
+
+        guard let code = PETSCIIControlCode.decode(byte), !(options.strict && code == .lineFeed) else {
             if options.strict {
                 throw PETSCIIError.unsupportedControlCode(byte, offset: offset)
             }
             return
         }
         try execute(code)
+    }
+
+    /// Whether a control code (other than RETURN) is displayed as a reverse
+    /// glyph instead of executed, following the KERNAL's test order.
+    func echoes(_ byte: UInt8) -> Bool {
+        if byte < 0x80 {
+            // $E745 tests insert mode first (DEL is echoed), $E74C then
+            // executes DEL even in quote mode.
+            if insertCount > 0 { return true }
+            return quoteMode && byte != 0x14
+        }
+        // $E7EA tests quote mode first (INST is echoed), $E7EE then
+        // executes INST even in insert mode.
+        if quoteMode { return true }
+        return insertCount > 0 && byte != 0x94
     }
 
     mutating func execute(_ code: PETSCIIControlCode) throws {
@@ -294,7 +315,16 @@ private struct ScreenEditor {
             }
         case .delete:
             realizePendingScroll()
-            guard col > 0 else { return }
+            guard col > 0 else {
+                // KERNAL $E701: at the start of a line DEL backs onto the
+                // last column of the previous line and blanks it; on the top
+                // row it does nothing.
+                guard row > 0 else { return }
+                row -= 1
+                col = Self.columns - 1
+                cells[index(col, row)] = blank
+                return
+            }
             col -= 1
             for c in col..<(Self.columns - 1) {
                 cells[index(c, row)] = cells[index(c + 1, row)]

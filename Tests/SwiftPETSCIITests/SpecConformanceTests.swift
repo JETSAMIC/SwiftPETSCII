@@ -84,10 +84,23 @@ final class SpecConformanceTests: XCTestCase {
         // "ABC", DEL → "AB" with cursor on C's old cell; "X" lands there.
         let s = try screen([0x41, 0x42, 0x43, 0x14, 0x58])
         XCTAssertEqual((0..<3).map { s[column: $0, row: 0].codepoint }, [0x01, 0x02, 0x18])
-        // DEL at column 0 does nothing.
-        let t = try screen([0x41, 0x0D, 0x14, 0x42])
+        // DEL at the home position does nothing.
+        let t = try screen([0x14, 0x41])
         XCTAssertEqual(t[column: 0, row: 0].codepoint, 0x01)
-        XCTAssertEqual(t[column: 0, row: 1].codepoint, 0x02)
+    }
+
+    func testDeleteAtLineStartBacksOntoPreviousLine() throws {
+        // KERNAL $E701: "A" at (0,0), "B" at (39,0), cursor wraps to (0,1);
+        // DEL moves to (39,0) and blanks it, so "C" lands there.
+        let bytes: [UInt8] = [0x41] + [UInt8](repeating: 0x1D, count: 38) + [0x42, 0x14, 0x43]
+        let s = try screen(bytes)
+        XCTAssertEqual(s[column: 0, row: 0].codepoint, 0x01)
+        XCTAssertEqual(s[column: 39, row: 0].codepoint, 0x03)
+        XCTAssertEqual(s[column: 0, row: 1].codepoint, 0x20)
+        // After a RETURN the previous line's last cell is blanked too.
+        let t = try screen([0x41, 0x0D, 0x14, 0x42])
+        XCTAssertEqual(t[column: 39, row: 0].codepoint, 0x02)
+        XCTAssertEqual(t[column: 0, row: 1].codepoint, 0x20)
     }
 
     func testDeleteShiftsRestOfLineLeft() throws {
@@ -158,6 +171,30 @@ final class SpecConformanceTests: XCTestCase {
         let s = try screen([0x94, 0x1C])
         XCTAssertEqual(s[column: 0, row: 0].codepoint, 0x9C)
         XCTAssertEqual(s[column: 0, row: 0].foreground, .lightBlue)
+    }
+
+    func testInsertIsExecutedInInsertMode() throws {
+        // KERNAL $E7EE tests INST before insert mode: "A", left, INST, INST,
+        // "X", "Y" → "XYA" (the second INST opens a second gap).
+        let s = try screen([0x41, 0x9D, 0x94, 0x94, 0x58, 0x59])
+        XCTAssertEqual((0..<3).map { s[column: $0, row: 0].codepoint }, [0x18, 0x19, 0x01])
+    }
+
+    func testInsertIsEchoedInQuoteMode() throws {
+        // Quote mode is tested first for shifted codes: INST shows as reverse T.
+        let s = try screen([0x22, 0x94])
+        XCTAssertEqual(s[column: 1, row: 0].codepoint, 0xD4)
+    }
+
+    func testInsertModeCancelsQuoteMode() throws {
+        // KERNAL $E6AA: with blanks still pending, `"` does not leave quote
+        // mode on, so the later RVS ON is executed.
+        let s = try screen([0x94, 0x94, 0x22, 0x41, 0x12, 0x42])
+        XCTAssertEqual(s[column: 2, row: 0].codepoint, 0x02)
+        XCTAssertTrue(s[column: 2, row: 0].reverse)
+        // A `"` that consumes the last inserted blank does start quote mode.
+        let t = try screen([0x94, 0x22, 0x12])
+        XCTAssertEqual(t[column: 1, row: 0].codepoint, 0x92)
     }
 
     // MARK: - Character sets
@@ -257,6 +294,11 @@ final class SpecConformanceTests: XCTestCase {
             XCTAssertEqual(error as? PETSCIIError, .unsupportedControlCode(0x07, offset: 1))
         }
         XCTAssertNoThrow(try PETSCIIParser().parse([0x41, 0x07]))
+        // LF is a C128 code: ignored normally, rejected in strict mode.
+        XCTAssertThrowsError(try parser.parse([0x41, 0x0A])) { error in
+            XCTAssertEqual(error as? PETSCIIError, .unsupportedControlCode(0x0A, offset: 1))
+        }
+        XCTAssertNoThrow(try PETSCIIParser().parse([0x41, 0x0A]))
     }
 
     func testFrameLimit() {
