@@ -6,7 +6,7 @@ import Foundation
 /// printed with `CHROUT`. Codes defined only on other Commodore machines
 /// (for example the C128's underline `0x02`, bell `0x07`, tab `0x09`,
 /// line feed `0x0A` and escape `0x1B`) are not C64 screen controls and
-/// ``decode(_:)`` returns `nil` for them. See `Reference/PETSCII.md` for the
+/// ``decode(_:)`` returns `nil` for them. See `Reference/PETSCII-Format.md` for the
 /// full table and the machine differences.
 ///
 /// Sources: C64 Programmer's Reference Guide, Appendix C/E; C64 User's

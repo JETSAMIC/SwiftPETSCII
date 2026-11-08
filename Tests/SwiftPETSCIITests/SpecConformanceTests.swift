@@ -1,8 +1,9 @@
 import XCTest
 @testable import SwiftPETSCII
 
-/// One test per rule in Reference/PETSCII.md that was fixed or added during
-/// the production audit. Fixtures are hand-built byte streams.
+/// One test per rule in Reference/PETSCII-Format.md that was fixed or added
+/// during the production audit or the spec review. Fixtures are hand-built
+/// byte streams.
 final class SpecConformanceTests: XCTestCase {
 
     private func screen(_ bytes: [UInt8], options: PETSCIIParser.Options = .init()) throws -> PETSCIIScreen {

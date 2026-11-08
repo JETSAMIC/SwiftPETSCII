@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unicode 13 Symbols for Legacy Computing block; Unicode → PETSCII encoding.
 - `PETSCIIParser.petsciiByte(forScreenCode:)`, `PETSCIIControlCode.byte`.
 - Strict mode, frame limit and their errors.
-- `Reference/PETSCII.md`, DocC catalog, Swift Package Index configuration,
+- `Reference/PETSCII-Format.md` format specification, DocC catalog, Swift Package Index configuration,
   CI workflow; tvOS, watchOS and visionOS support.
 
 ### Changed
